@@ -26,7 +26,7 @@ jobs:
 
       - name: Extract game project
         run: |
-          unzip -o ForkliftDriverAndroid_APK-build.zip -d project
+          unzip -o ForkliftDriverAndroid_APK-build-fixed.zip -d project
 
       - name: Build APK
         working-directory: project
