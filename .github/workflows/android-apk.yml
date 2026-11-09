@@ -27,7 +27,8 @@ jobs:
       - name: Extract game project
         run: |
           unzip -o ForkliftDriverAndroid_APK-build-fixed.zip -d project
-
+          find project -type f -name "*.xml" -exec sed -i '1{/^[[:space:]]*$/d;}' {} +
+          
       - name: Build APK
         working-directory: project
         run: gradle --no-daemon assembleDebug
