@@ -19,9 +19,8 @@ class ForkliftGameView @JvmOverloads constructor(
         isAntiAlias = true
     }
 
-    // Trukin sijainti ja liike
     private var forkliftX = 500f
-    private var forkliftY = 800f
+    private var forkliftY = 900f
     private var forkliftAngle = 0f
 
     var forkHeight = 0f
@@ -92,61 +91,74 @@ class ForkliftGameView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        // Varaston harmaa lattia
-        canvas.drawColor(0xFF202225.toInt())
+        // Tumma varastolattia
+        canvas.drawColor(0xFF1E2124.toInt())
 
-        // Kosketusohjauksen alueen raja / lattiamerkintä
+        // Piirretään kevyttä ruudukkoa / lattialinjoja tuomaan syvyysvaikutelmaa
+        paint.color = 0x15FFFFFF.toInt()
+        paint.strokeWidth = 2f
+        var step = 100f
+        var x = 0f
+        while (x < width) {
+            canvas.drawLine(x, 0f, x, height.toFloat(), paint)
+            x += step
+        }
+        var y = 0f
+        while (y < height) {
+            canvas.drawLine(0f, y, width.toFloat(), y, paint)
+            y += step
+        }
+
+        // Ohjausalueen raja
         paint.color = 0x33FFFFFF.toInt()
-        paint.strokeWidth = 4f
-        canvas.drawLine(0f, height * 0.4f, width.toFloat(), height.4f, paint)
+        canvas.drawLine(0f, height * 0.4f, width.toFloat(), height * 0.4f, paint)
 
         canvas.save()
         canvas.translate(forkliftX, forkliftY)
         canvas.rotate(forkliftAngle)
 
+        // Simulaatio 3/4-perspektiivistä: venytetään hieman pystyakselilla, jotta saadaan syvyyttä
+        canvas.scale(1.0f, 1.25f)
+
         // --- 1. RENKAAT ---
         paint.color = 0xFF111111.toInt()
-        // Takarenkaat
-        canvas.drawRect(-36f, 35f, -20f, 65f, paint)
-        canvas.drawRect(20f, 35f, 36f, 65f, paint)
-        // Eturenkaat (suuremmat vetopyörät)
-        canvas.drawRect(-42f, -35f, -22f, 5f, paint)
-        canvas.drawRect(22f, -35f, 42f, 5f, paint)
+        canvas.drawRect(-36f, 30f, -22f, 60f, paint) // Takavasen
+        canvas.drawRect(22f, 30f, 36f, 60f, paint)  // Takaoikea
+        canvas.drawRect(-42f, -30f, -22f, 5f, paint) // Etuvasen
+        canvas.drawRect(22f, -30f, 42f, 5f, paint)  // Etuoikea
 
-        // --- 2. TRUKIN RUNKO (Kullanruskea / keltainen) ---
-        paint.color = 0xFFFFB300.toInt() // Premium kulta/keltainen
-        canvas.drawRect(-32f, -30f, 32f, 55f, paint)
+        // --- 2. TRUKIN RUNKO (Kulta/Keltainen teollisuusväri) ---
+        paint.color = 0xFFFFB300.toInt()
+        canvas.drawRect(-30f, -25f, 30f, 50f, paint)
 
-        // Vastapaino takana
-        paint.color = 0xFF424242.toInt()
-        canvas.drawRect(-30f, 45f, 30f, 60f, paint)
+        // Vastapaino takana (tummemman harmaa)
+        paint.color = 0xFF37474F.toInt()
+        canvas.drawRect(-28f, 38f, 28f, 52f, paint)
 
         // --- 3. OHJAAMO JA PENKKI ---
-        paint.color = 0xFF212121.toInt()
-        canvas.drawRect(-20f, -5f, 20f, 35f, paint) // Istuin ja kojelauta
+        paint.color = 0xFF263238.toInt()
+        canvas.drawRect(-18f, -5f, 18f, 30f, paint)
 
         // --- 4. MUSTA SUOJAKEHIKKO (Overhead Guard) ---
-        paint.color = 0xFF1C1C1C.toInt()
-        // Pilarit ja katto
-        canvas.drawRect(-32f, -32f, -26f, -26f, paint) // Vasen etupylväs
-        canvas.drawRect(26f, -32f, 32f, -26f, paint)  // Oikea etupylväs
-        canvas.drawRect(-32f, 30f, -26f, 36f, paint)  // Vasen takapylväs
-        canvas.drawRect(26f, 30f, 32f, 36f, paint)   // Oikea takapylväs
-        // Kehikon yläkatto
-        canvas.drawRect(-32f, -32f, 32f, -28f, paint)
+        paint.color = 0xFF212121.toInt()
+        // Pylväät
+        canvas.drawRect(-30f, -28f, -25f, -23f, paint)
+        canvas.drawRect(25f, -28f, 30f, -23f, paint)
+        canvas.drawRect(-30f, 25f, -25f, 30f, paint)
+        canvas.drawRect(25f, 25f, 30f, 30f, paint)
+        // Katto
+        canvas.drawRect(-30f, -28f, 30f, -24f, paint)
 
         // --- 5. MASTO JA HAARUKAT (Edessä) ---
-        // Maston pystypalkit
-        paint.color = 0xFF2C2C2C.toInt()
-        canvas.drawRect(-18f, -75f, -10f, -30f, paint)
-        canvas.drawRect(10f, -75f, 18f, -30f, paint)
+        paint.color = 0xFF424242.toInt()
+        canvas.drawRect(-16f, -65f, -10f, -25f, paint)
+        canvas.drawRect(10f, -65f, 16f, -25f, paint)
 
-        // Nostokelkka ja haarukat (liikkuvat korkeuden mukaan)
+        // Liikkuvat haarukat (korkeuden säätö volyyminapeilla)
         val forkOffset = forkHeight * 0.4f
-        paint.color = 0xFF3E3E3E.toInt()
-        // Itse piikit (haarukat)
-        canvas.drawRect(-24f, -100f - forkOffset, -14f, -70f - forkOffset, paint)
-        canvas.drawRect(14f, -100f - forkOffset, 24f, -70f - forkOffset, paint)
+        paint.color = 0xFF616161.toInt()
+        canvas.drawRect(-22f, -85f - forkOffset, -13f, -60f - forkOffset, paint)
+        canvas.drawRect(13f, -85f - forkOffset, 22f, -60f - forkOffset, paint)
 
         canvas.restore()
     }
