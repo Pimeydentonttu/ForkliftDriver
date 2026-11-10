@@ -21,24 +21,30 @@ class ForkliftGameView @JvmOverloads constructor(
     private val paint = Paint().apply { isAntiAlias = true }
     private val path = Path()
 
+    // Trukin sijainti ja fysiikka
     private var forkliftX = 250f
     private var forkliftY = 300f
     private var forkliftAngle = 0f
     var forkHeight = 0f
         private set
 
+    // Eurolava ja kuorma
     private var palletX = 250f
     private var palletY = 160f
     private var palletZ = 0f
     private var isPalletLoaded = false
 
+    // Hyllyjen törmäysalueet
     private val shelfColliders = listOf(
         RectF(-120f, 60f, -40f, 280f),
         RectF(100f, -120f, 320f, -40f)
     )
 
+    // Kosketusohjaus
     private var touchStartX = 0f
     private var touchStartY = 0f
+    private var touchCurrentX = 0f
+    private var touchCurrentY = 0f
     private var isTouching = false
     private var currentThrottle = 0f
     private var currentSteering = 0f
@@ -61,16 +67,23 @@ class ForkliftGameView @JvmOverloads constructor(
                 if (event.y > height * 0.45f) {
                     touchStartX = event.x
                     touchStartY = event.y
+                    touchCurrentX = event.x
+                    touchCurrentY = event.y
                     isTouching = true
                 }
                 return true
             }
             MotionEvent.ACTION_MOVE -> {
                 if (isTouching) {
-                    val deltaX = event.x - touchStartX
-                    val deltaY = event.y - touchStartY
-                    currentThrottle = (-deltaY * 0.04f).coerceIn(-6f, 6f)
-                    currentSteering = (deltaX * 0.03f).coerceIn(-3.5f, 3.5f)
+                    touchCurrentX = event.x
+                    touchCurrentY = event.y
+                    val deltaX = touchCurrentX - touchStartX
+                    val deltaY = touchCurrentY - touchStartY
+
+                    // Pyyhkäisy ylös = eteenpäin (positiivinen throttle)
+                    currentThrottle = (-deltaY * 0.05f).coerceIn(-6f, 6f)
+                    // Pyyhkäisy oikealle = kääntö oikealle
+                    currentSteering = (deltaX * 0.04f).coerceIn(-4f, 4f)
                 }
                 return true
             }
@@ -86,10 +99,13 @@ class ForkliftGameView @JvmOverloads constructor(
 
     private fun updatePhysics() {
         if (currentThrottle != 0f) {
+            // Takapyöräohjauksen suuntakorjaus
             val nextAngle = forkliftAngle + currentSteering * (currentThrottle / 6f)
             val rad = Math.toRadians(nextAngle.toDouble())
-            val nextX = forkliftX + (currentThrottle * sin(rad)).toFloat()
-            val nextY = forkliftY - (currentThrottle * cos(rad)).toFloat()
+
+            // Eteenpäin meno vie maston suuntaan
+            val nextX = forkliftX - (currentThrottle * sin(rad)).toFloat()
+            val nextY = forkliftY + (currentThrottle * cos(rad)).toFloat()
 
             var collides = false
             for (box in shelfColliders) {
@@ -108,6 +124,7 @@ class ForkliftGameView @JvmOverloads constructor(
             }
         }
 
+        // Piikkien kärjen sijainti maailmassa
         val rad = Math.toRadians(forkliftAngle.toDouble())
         val forwardX = -sin(rad).toFloat()
         val forwardY = cos(rad).toFloat()
@@ -148,6 +165,7 @@ class ForkliftGameView @JvmOverloads constructor(
         drawPallet(canvas)
         drawIsometricForklift(canvas)
 
+        // Ohjausalueen tausta ja raja
         paint.color = 0x22FFFFFF.toInt()
         paint.style = Paint.Style.FILL
         canvas.drawRect(0f, height * 0.45f, width.toFloat(), height.toFloat(), paint)
@@ -155,6 +173,18 @@ class ForkliftGameView @JvmOverloads constructor(
         paint.color = 0x55FFFFFF.toInt()
         paint.strokeWidth = 3f
         canvas.drawLine(0f, height * 0.45f, width.toFloat(), height * 0.45f, paint)
+
+        // Virtuaalinen joystick / peukaloympyrät kosketettaessa
+        if (isTouching) {
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 4f
+            paint.color = 0x66FFFFFF.toInt()
+            canvas.drawCircle(touchStartX, touchStartY, 70f, paint)
+
+            paint.style = Paint.Style.FILL
+            paint.color = 0xAAFFB300.toInt()
+            canvas.drawCircle(touchCurrentX, touchCurrentY, 30f, paint)
+        }
     }
 
     private fun drawIsometricFloor(canvas: Canvas) {
