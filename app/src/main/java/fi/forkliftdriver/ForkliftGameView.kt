@@ -3,9 +3,12 @@ package fi.forkliftdriver
 import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.LinearGradient
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RadialGradient
 import android.graphics.RectF
+import android.graphics.Shader
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
@@ -35,7 +38,7 @@ class ForkliftGameView @JvmOverloads constructor(
     private var deliveredCount = 0
     private val totalPallets = 2
 
-    // Trukin sijainti ja nopeus
+    // Trukin tila
     private var forkliftX = 260f
     private var forkliftY = 320f
     private var forkliftAngle = 0f
@@ -62,7 +65,7 @@ class ForkliftGameView @JvmOverloads constructor(
         RectF(400f, 100f, 560f, 500f)
     )
 
-    // Joystick-ohjaus
+    // Touch-ohjaus
     private var touchStartX = 0f
     private var touchStartY = 0f
     private var touchCurrentX = 0f
@@ -139,22 +142,16 @@ class ForkliftGameView @JvmOverloads constructor(
             val deltaY = touchCurrentY - touchStartY
             val distance = hypot(deltaX, deltaY)
 
-            // Kuollut alue: pienet heilahdukset eivät tee mitään
             if (distance > 15f) {
-                // Lasketaan sormen kulma ruudulla
                 val screenAngle = Math.toDegrees(atan2(deltaY.toDouble(), deltaX.toDouble())).toFloat()
-                
-                // Muunnetaan ruudun suunta isometriseen koordinaatistoon (45 asteen kierto)
                 val targetWorldAngle = screenAngle + 135f
 
-                // Käännetään trukkia pehmeästi kohti haluttua suuntaa
                 var angleDiff = (targetWorldAngle - forkliftAngle) % 360f
                 if (angleDiff > 180f) angleDiff -= 360f
                 if (angleDiff < -180f) angleDiff += 360f
 
                 forkliftAngle += angleDiff * 0.15f
 
-                // Nopeus määräytyy siitä, kuinka pitkälle peukalo on viety
                 val targetSpeed = (distance / 70f).coerceIn(0.5f, 4.5f)
                 currentSpeed = currentSpeed * 0.8f + targetSpeed * 0.2f
 
@@ -183,7 +180,6 @@ class ForkliftGameView @JvmOverloads constructor(
             currentSpeed *= 0.5f
         }
 
-        // Piikkien kärki ja lavojen käsittely
         val rad = Math.toRadians(forkliftAngle.toDouble())
         val forwardX = -sin(rad).toFloat()
         val forwardY = cos(rad).toFloat()
@@ -243,9 +239,12 @@ class ForkliftGameView @JvmOverloads constructor(
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
 
-        canvas.drawColor(0xFF1B1E22.toInt())
+        // Varaston tausta
+        canvas.drawColor(0xFF14171A.toInt())
 
+        drawWarehouseWalls(canvas)
         drawWarehouseFloor(canvas)
+        drawHeadlightBeam(canvas)
         drawLoadingDockAndTruck(canvas)
         drawWarehouseShelves(canvas)
 
@@ -253,7 +252,7 @@ class ForkliftGameView @JvmOverloads constructor(
             drawPallet(canvas, pallet)
         }
 
-        drawLargeForkliftWithDriver(canvas)
+        drawDetailedForklift(canvas)
         drawHUD(canvas)
 
         if (gameState == GameState.MENU) {
@@ -264,72 +263,40 @@ class ForkliftGameView @JvmOverloads constructor(
         }
     }
 
-    private fun drawHUD(canvas: Canvas) {
-        paint.color = 0x25000000.toInt()
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(0f, height * controlAreaRatio, width.toFloat(), height.toFloat(), paint)
+    private fun drawWarehouseWalls(canvas: Canvas) {
+        // Varaston takaseinä (peltipaneelilinjat)
+        val p1x = toIsoX(-200f, -220f)
+        val p1y = toIsoY(-200f, -220f, 0f)
+        val p2x = toIsoX(450f, -220f)
+        val p2y = toIsoY(450f, -220f, 0f)
+        val p2yTop = toIsoY(450f, -220f, 220f)
+        val p1yTop = toIsoY(-200f, -220f, 220f)
 
-        paint.color = 0x55FFA000.toInt()
-        paint.strokeWidth = 3f
-        canvas.drawLine(0f, height * controlAreaRatio, width.toFloat(), height * controlAreaRatio, paint)
+        paint.color = 0xFF1C2026.toInt()
+        path.reset()
+        path.moveTo(p1x, p1y)
+        path.lineTo(p2x, p2y)
+        path.lineTo(p2x, p2yTop)
+        path.lineTo(p1x, p1yTop)
+        path.close()
+        canvas.drawPath(path, paint)
 
-        if (gameState == GameState.PLAYING) {
-            paint.color = 0xCC111315.toInt()
-            paint.style = Paint.Style.FILL
-            canvas.drawRoundRect(20f, 30f, width - 20f, 130f, 16f, 16f, paint)
-
-            val elapsedSec = ((System.currentTimeMillis() - startTimeMs) / 1000f).toInt()
-            textPaint.color = Color.WHITE
-            textPaint.textSize = 34f
-            textPaint.isFakeBoldText = true
-            canvas.drawText("LAVAT: $deliveredCount / $totalPallets", width * 0.3f, 90f, textPaint)
-
-            textPaint.color = 0xFFFFD54F.toInt()
-            canvas.drawText("AIKA: ${elapsedSec}s", width * 0.75f, 90f, textPaint)
-
-            // Selkeä joystick-alue
-            if (isTouching) {
-                paint.style = Paint.Style.STROKE
-                paint.strokeWidth = 4f
-                paint.color = 0x44FFFFFF.toInt()
-                canvas.drawCircle(touchStartX, touchStartY, 70f, paint)
-
-                paint.style = Paint.Style.FILL
-                paint.color = 0xDDFFB300.toInt()
-                canvas.drawCircle(touchCurrentX, touchCurrentY, 24f, paint)
-
-                // Suuntanuoli/viiva joystickin keskeltä
-                paint.color = 0x88FFB300.toInt()
-                paint.strokeWidth = 5f
-                canvas.drawLine(touchStartX, touchStartY, touchCurrentX, touchCurrentY, paint)
-            }
+        // Seinän metalliraidoitus
+        paint.color = 0x11FFFFFF.toInt()
+        paint.strokeWidth = 2f
+        var z = 20f
+        while (z < 220f) {
+            val sy1 = toIsoY(-200f, -220f, z)
+            val sy2 = toIsoY(450f, -220f, z)
+            canvas.drawLine(p1x, sy1, p2x, sy2, paint)
+            z += 25f
         }
-    }
-
-    private fun drawMenuOverlay(canvas: Canvas, title: String, subtitle: String, hint: String) {
-        paint.color = 0xDD0B0D0E.toInt()
-        paint.style = Paint.Style.FILL
-        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
-
-        textPaint.color = 0xFFFFB300.toInt()
-        textPaint.textSize = 62f
-        textPaint.isFakeBoldText = true
-        canvas.drawText(title, width * 0.5f, height * 0.38f, textPaint)
-
-        textPaint.color = Color.WHITE
-        textPaint.textSize = 34f
-        textPaint.isFakeBoldText = false
-        canvas.drawText(subtitle, width * 0.5f, height * 0.46f, textPaint)
-
-        textPaint.color = 0xFF9E9E9E.toInt()
-        textPaint.textSize = 28f
-        canvas.drawText(hint, width * 0.5f, height * 0.54f, textPaint)
     }
 
     private fun drawWarehouseFloor(canvas: Canvas) {
         paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1.5f
-        paint.color = 0x1AFFFFFF.toInt()
+        paint.strokeWidth = 1.2f
+        paint.color = 0x1EFFFFFF.toInt()
 
         val step = 70f
         for (i in -4..12) {
@@ -339,23 +306,62 @@ class ForkliftGameView @JvmOverloads constructor(
             canvas.drawLine(toIsoX(-4 * step, j * step), toIsoY(-4 * step, j * step), toIsoX(12 * step, j * step), toIsoY(12 * step, j * step), paint)
         }
 
-        paint.color = 0x77FFD54F.toInt()
-        paint.strokeWidth = 5f
+        // Trukkikaistan kelta-mustat huomiomerkinnät
+        paint.color = 0x66FFC107.toInt()
+        paint.strokeWidth = 6f
         canvas.drawLine(toIsoX(-60f, -40f), toIsoY(-60f, -40f), toIsoX(-60f, 450f), toIsoY(-60f, 450f), paint)
         canvas.drawLine(toIsoX(380f, -40f), toIsoY(380f, -40f), toIsoX(380f, 450f), toIsoY(380f, 450f), paint)
         paint.style = Paint.Style.FILL
     }
 
+    private fun drawHeadlightBeam(canvas: Canvas) {
+        // Trukin ajovalojen keila lattialla
+        val rad = Math.toRadians(forkliftAngle.toDouble())
+        val forwardX = -sin(rad).toFloat()
+        val forwardY = cos(rad).toFloat()
+        val rightX = cos(rad).toFloat()
+        val rightY = sin(rad).toFloat()
+
+        val mastX = forkliftX + forwardX * 45f
+        val mastY = forkliftY + forwardY * 45f
+
+        val startX = toIsoX(mastX, mastY)
+        val startY = toIsoY(mastX, mastY, 30f)
+
+        val tipLeftX = mastX + forwardX * 180f - rightX * 80f
+        val tipLeftY = mastY + forwardY * 180f - rightY * 80f
+        val tipRightX = mastX + forwardX * 180f + rightX * 80f
+        val tipRightY = mastY + forwardY * 180f + rightY * 80f
+
+        val endL1 = toIsoX(tipLeftX, tipLeftY)
+        val endL2 = toIsoY(tipLeftX, tipLeftY, 0f)
+        val endR1 = toIsoX(tipRightX, tipRightY)
+        val endR2 = toIsoY(tipRightX, tipRightY, 0f)
+
+        paint.color = 0x22FFF59D.toInt() // Lämmin valokeila
+        path.reset()
+        path.moveTo(startX, startY)
+        path.lineTo(endL1, endL2)
+        path.lineTo(endR1, endR2)
+        path.close()
+        canvas.drawPath(path, paint)
+    }
+
     private fun drawLoadingDockAndTruck(canvas: Canvas) {
-        drawIsoBox(canvas, 420f, 80f, 0f, 40f, 350f, 30f, 0xFF455A64.toInt())
+        // Laituri
+        drawIsoBox(canvas, 420f, 80f, 0f, 40f, 350f, 30f, 0xFF37474F.toInt())
+        // Huomioraidat rampissa
         drawIsoBox(canvas, 410f, 120f, 0f, 10f, 120f, 30f, 0xFFFFB300.toInt())
 
-        drawIsoBox(canvas, 460f, 80f, 0f, 120f, 320f, 110f, 0xFFECEFF1.toInt())
-        drawIsoBox(canvas, 460f, 85f, 25f, 110f, 300f, 80f, 0xFF263238.toInt())
+        // REKKA
+        drawIsoBox(canvas, 460f, 80f, 0f, 120f, 320f, 110f, 0xFFCFD8DC.toInt()) // Vaalea runko
+        drawIsoBox(canvas, 460f, 85f, 25f, 110f, 300f, 80f, 0xFF1E272C.toInt()) // Sisätila
+        // Kromatut/mustat pyörät
         drawIsoBox(canvas, 470f, 340f, 0f, 20f, 40f, 25f, 0xFF111111.toInt())
         drawIsoBox(canvas, 550f, 340f, 0f, 20f, 40f, 25f, 0xFF111111.toInt())
 
-        paint.color = 0x444CAF50.toInt()
+        // Vihreä kohdealue
+        paint.color = 0x334CAF50.toInt()
         val g1x = toIsoX(465f, 95f)
         val g1y = toIsoY(465f, 95f, 26f)
         val g2x = toIsoX(565f, 95f)
@@ -380,8 +386,8 @@ class ForkliftGameView @JvmOverloads constructor(
     }
 
     private fun drawShelfUnit(canvas: Canvas, ox: Float, oy: Float, sizeX: Float, sizeY: Float, heightZ: Float) {
-        val colPillar = 0xFF1565C0.toInt()
-        val colShelf = 0xFFE65100.toInt()
+        val colPillar = 0xFF0D47A1.toInt()
+        val colShelf = 0xFFEF6C00.toInt()
         val colBox = 0xFF8D6E63.toInt()
 
         drawIsoBox(canvas, ox, oy, 50f, sizeX, sizeY, 10f, colShelf)
@@ -408,11 +414,14 @@ class ForkliftGameView @JvmOverloads constructor(
 
         val boxColor = if (pallet.isDelivered) 0xFF43A047.toInt() else 0xFFA17A4E.toInt()
 
-        drawIsoBox(canvas, pallet.x, pallet.y, pallet.z, 70f, 55f, 12f, 0xFFC89D66.toInt())
+        // Kuormalavan lautakerrokset ja jalkapalat
+        drawIsoBox(canvas, pallet.x, pallet.y, pallet.z, 70f, 55f, 6f, 0xFFBCAAA4.toInt())
+        drawIsoBox(canvas, pallet.x, pallet.y, pallet.z + 6f, 70f, 55f, 6f, 0xFFD7CCC8.toInt())
+        // Pahvilaatikko
         drawIsoBox(canvas, pallet.x + 8f, pallet.y + 8f, pallet.z + 12f, 54f, 40f, 45f, boxColor)
     }
 
-    private fun drawLargeForkliftWithDriver(canvas: Canvas) {
+    private fun drawDetailedForklift(canvas: Canvas) {
         val rad = Math.toRadians(forkliftAngle.toDouble())
         val forwardX = -sin(rad).toFloat()
         val forwardY = cos(rad).toFloat()
@@ -422,36 +431,55 @@ class ForkliftGameView @JvmOverloads constructor(
         val baseX = toIsoX(forkliftX, forkliftY)
         val baseY = toIsoY(forkliftX, forkliftY)
 
+        // Pehmeä varjo maassa
         paint.color = 0x55000000.toInt()
-        canvas.drawOval(baseX - 60f, baseY - 28f, baseX + 60f, baseY + 28f, paint)
+        canvas.drawOval(baseX - 65f, baseY - 30f, baseX + 65f, baseY + 30f, paint)
 
-        drawIsoBox(canvas, forkliftX - 35f, forkliftY - 35f, 0f, 70f, 70f, 45f, 0xFFFFB300.toInt())
-        drawIsoBox(canvas, forkliftX - 32f, forkliftY + 22f, 10f, 64f, 12f, 35f, 0xFF37474F.toInt())
-        drawIsoBox(canvas, forkliftX - 18f, forkliftY - 5f, 25f, 36f, 30f, 18f, 0xFF212121.toInt())
+        // 1. ISOMETRISET PYÖRÄT JA KELTAISET VANTEET
+        drawWheel(canvas, forkliftX - 32f, forkliftY - 24f, rightX, rightY)
+        drawWheel(canvas, forkliftX + 24f, forkliftY - 24f, rightX, rightY)
+        drawWheel(canvas, forkliftX - 32f, forkliftY + 22f, rightX, rightY)
+        drawWheel(canvas, forkliftX + 24f, forkliftY + 22f, rightX, rightY)
 
-        // Kuski
+        // 2. RUNKO JA VALAISTU KORIPINTA
+        drawIsoBox(canvas, forkliftX - 35f, forkliftY - 35f, 6f, 70f, 70f, 40f, 0xFFFFB300.toInt())
+        // Takavastapaino
+        drawIsoBox(canvas, forkliftX - 34f, forkliftY + 18f, 10f, 68f, 17f, 36f, 0xFF263238.toInt())
+
+        // 3. OHJAAMO & KULJETTAJA
+        drawIsoBox(canvas, forkliftX - 18f, forkliftY - 5f, 25f, 36f, 30f, 18f, 0xFF1A1A1A.toInt()) // Penkki
+
+        // Kuski (turvaliivit, haalarit, kypärä)
         drawIsoBox(canvas, forkliftX - 12f, forkliftY, 43f, 24f, 20f, 26f, 0xFFFDD835.toInt())
-        drawIsoBox(canvas, forkliftX - 16f, forkliftY + 2f, 43f, 6f, 16f, 20f, 0xFF1976D2.toInt())
-        drawIsoBox(canvas, forkliftX + 10f, forkliftY + 2f, 43f, 6f, 16f, 20f, 0xFF1976D2.toInt())
+        drawIsoBox(canvas, forkliftX - 16f, forkliftY + 2f, 43f, 6f, 16f, 20f, 0xFF1565C0.toInt())
+        drawIsoBox(canvas, forkliftX + 10f, forkliftY + 2f, 43f, 6f, 16f, 20f, 0xFF1565C0.toInt())
         drawIsoBox(canvas, forkliftX - 8f, forkliftY + 4f, 69f, 16f, 14f, 14f, 0xFFFFE0B2.toInt())
-        drawIsoBox(canvas, forkliftX - 9f, forkliftY + 3f, 79f, 18f, 16f, 9f, 0xFFFF5722.toInt())
+        drawIsoBox(canvas, forkliftX - 9f, forkliftY + 3f, 79f, 18f, 16f, 9f, 0xFFFF6D00.toInt())
 
-        // Suojakehikko
-        drawIsoBox(canvas, forkliftX - 30f, forkliftY - 28f, 45f, 7f, 7f, 55f, 0xFF1C1C1C.toInt())
-        drawIsoBox(canvas, forkliftX + 23f, forkliftY - 28f, 45f, 7f, 7f, 55f, 0xFF1C1C1C.toInt())
-        drawIsoBox(canvas, forkliftX - 30f, forkliftY + 23f, 45f, 7f, 7f, 55f, 0xFF1C1C1C.toInt())
-        drawIsoBox(canvas, forkliftX + 23f, forkliftY + 23f, 45f, 7f, 7f, 55f, 0xFF1C1C1C.toInt())
+        // 4. METALLINEN SUOJA-ROPS JA KATTO
+        drawIsoBox(canvas, forkliftX - 30f, forkliftY - 28f, 45f, 7f, 7f, 55f, 0xFF212121.toInt())
+        drawIsoBox(canvas, forkliftX + 23f, forkliftY - 28f, 45f, 7f, 7f, 55f, 0xFF212121.toInt())
+        drawIsoBox(canvas, forkliftX - 30f, forkliftY + 23f, 45f, 7f, 7f, 55f, 0xFF212121.toInt())
+        drawIsoBox(canvas, forkliftX + 23f, forkliftY + 23f, 45f, 7f, 7f, 55f, 0xFF212121.toInt())
         drawIsoBox(canvas, forkliftX - 32f, forkliftY - 30f, 100f, 64f, 60f, 8f, 0xFF263238.toInt())
 
+        // 5. HYDRAULIMASTO JA TYÖVALOT
         val mastX = forkliftX + forwardX * 42f
         val mastY = forkliftY + forwardY * 42f
-        drawIsoBox(canvas, mastX - 22f, mastY - 5f, 0f, 44f, 10f, 95f, 0xFF455A64.toInt())
+        drawIsoBox(canvas, mastX - 22f, mastY - 5f, 0f, 44f, 10f, 95f, 0xFF37474F.toInt())
+        // Maston teräskisko keskellä
+        drawIsoBox(canvas, mastX - 4f, mastY - 5f, 10f, 8f, 8f, 85f, 0xFFB0BEC5.toInt())
 
+        // Kirkkaat LED-työvalot maston sivuilla
+        drawIsoBox(canvas, mastX - 24f, mastY - 6f, 75f, 8f, 6f, 8f, 0xFFFFF9C4.toInt())
+        drawIsoBox(canvas, mastX + 16f, mastY - 6f, 75f, 8f, 6f, 8f, 0xFFFFF9C4.toInt())
+
+        // 6. KIILTÄVÄT TERÄSHAARUKAT
         val forkElevation = forkHeight * 0.5f
-        val forkTipX = mastX + forwardX * 44f
-        val forkTipY = mastY + forwardY * 44f
+        val forkTipX = mastX + forwardX * 46f
+        val forkTipY = mastY + forwardY * 46f
 
-        paint.color = 0xFFB0BEC5.toInt()
+        paint.color = 0xFFECEFF1.toInt()
         val p1x = toIsoX(mastX - 16f * rightX, mastY - 16f * rightY)
         val p1y = toIsoY(mastX - 16f * rightX, mastY - 16f * rightY, forkElevation)
         val p2x = toIsoX(forkTipX - 16f * rightX, forkTipY - 16f * rightY)
@@ -462,9 +490,76 @@ class ForkliftGameView @JvmOverloads constructor(
         val p4x = toIsoX(forkTipX + 16f * rightX, forkTipY + 16f * rightY)
         val p4y = toIsoY(forkTipX + 16f * rightX, forkTipY + 16f * rightY, forkElevation)
 
-        paint.strokeWidth = 8f
+        paint.strokeWidth = 9f
         canvas.drawLine(p1x, p1y, p2x, p2y, paint)
         canvas.drawLine(p3x, p3y, p4x, p4y, paint)
+    }
+
+    private fun drawWheel(canvas: Canvas, wx: Float, wy: Float, rx: Float, ry: Float) {
+        // Pyörän kumi
+        drawIsoBox(canvas, wx, wy, 0f, 14f, 14f, 16f, 0xFF111111.toInt())
+        // Keltainen vannekeskiö
+        drawIsoBox(canvas, wx + 3f, wy + 3f, 4f, 8f, 8f, 8f, 0xFFFFCA28.toInt())
+    }
+
+    private fun drawHUD(canvas: Canvas) {
+        paint.color = 0x25000000.toInt()
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, height * controlAreaRatio, width.toFloat(), height.toFloat(), paint)
+
+        paint.color = 0x55FFA000.toInt()
+        paint.strokeWidth = 3f
+        canvas.drawLine(0f, height * controlAreaRatio, width.toFloat(), height * controlAreaRatio, paint)
+
+        if (gameState == GameState.PLAYING) {
+            paint.color = 0xCC111315.toInt()
+            paint.style = Paint.Style.FILL
+            canvas.drawRoundRect(20f, 30f, width - 20f, 130f, 16f, 16f, paint)
+
+            val elapsedSec = ((System.currentTimeMillis() - startTimeMs) / 1000f).toInt()
+            textPaint.color = Color.WHITE
+            textPaint.textSize = 34f
+            textPaint.isFakeBoldText = true
+            canvas.drawText("LAVAT: $deliveredCount / $totalPallets", width * 0.3f, 90f, textPaint)
+
+            textPaint.color = 0xFFFFD54F.toInt()
+            canvas.drawText("AIKA: ${elapsedSec}s", width * 0.75f, 90f, textPaint)
+
+            if (isTouching) {
+                paint.style = Paint.Style.STROKE
+                paint.strokeWidth = 4f
+                paint.color = 0x44FFFFFF.toInt()
+                canvas.drawCircle(touchStartX, touchStartY, 70f, paint)
+
+                paint.style = Paint.Style.FILL
+                paint.color = 0xDDFFB300.toInt()
+                canvas.drawCircle(touchCurrentX, touchCurrentY, 24f, paint)
+
+                paint.color = 0x88FFB300.toInt()
+                paint.strokeWidth = 5f
+                canvas.drawLine(touchStartX, touchStartY, touchCurrentX, touchCurrentY, paint)
+            }
+        }
+    }
+
+    private fun drawMenuOverlay(canvas: Canvas, title: String, subtitle: String, hint: String) {
+        paint.color = 0xDD0B0D0E.toInt()
+        paint.style = Paint.Style.FILL
+        canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), paint)
+
+        textPaint.color = 0xFFFFB300.toInt()
+        textPaint.textSize = 62f
+        textPaint.isFakeBoldText = true
+        canvas.drawText(title, width * 0.5f, height * 0.38f, textPaint)
+
+        textPaint.color = Color.WHITE
+        textPaint.textSize = 34f
+        textPaint.isFakeBoldText = false
+        canvas.drawText(subtitle, width * 0.5f, height * 0.46f, textPaint)
+
+        textPaint.color = 0xFF9E9E9E.toInt()
+        textPaint.textSize = 28f
+        canvas.drawText(hint, width * 0.5f, height * 0.54f, textPaint)
     }
 
     private fun drawIsoBox(
