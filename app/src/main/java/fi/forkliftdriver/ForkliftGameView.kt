@@ -280,4 +280,42 @@ class ForkliftGameView @JvmOverloads constructor(
         val y3 = toIsoY(x, y + l, z + h)
 
         val by1 = toIsoY(x + w, y, z)
-        val by2 = toIsoY(x + w, y +
+        val by2 = toIsoY(x + w, y + l, z)
+        val by3 = toIsoY(x, y + l, z)
+
+        paint.color = adjustAlphaAndBrightness(baseColor, 0.7f)
+        path.reset()
+        path.moveTo(x1, y1)
+        path.lineTo(x2, y2)
+        path.lineTo(x2, by2)
+        path.lineTo(x1, by1)
+        path.close()
+        canvas.drawPath(path, paint)
+
+        paint.color = adjustAlphaAndBrightness(baseColor, 0.85f)
+        path.reset()
+        path.moveTo(x2, y2)
+        path.lineTo(x3, y3)
+        path.lineTo(x3, by3)
+        path.lineTo(x2, by2)
+        path.close()
+        canvas.drawPath(path, paint)
+
+        paint.color = baseColor
+        path.reset()
+        path.moveTo(x0, y0)
+        path.lineTo(x1, y1)
+        path.lineTo(x2, y2)
+        path.lineTo(x3, y3)
+        path.close()
+        canvas.drawPath(path, paint)
+    }
+
+    private fun adjustAlphaAndBrightness(color: Int, factor: Float): Int {
+        val a = (color shr 24) and 0xFF
+        val r = (((color shr 16) and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val g = (((color shr 8) and 0xFF) * factor).toInt().coerceIn(0, 255)
+        val b = ((color and 0xFF) * factor).toInt().coerceIn(0, 255)
+        return (a shl 24) or (r shl 16) or (g shl 8) or b
+    }
+}
